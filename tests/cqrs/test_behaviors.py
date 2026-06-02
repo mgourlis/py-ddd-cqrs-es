@@ -18,7 +18,7 @@ from pydomain.cqrs.behaviors import (
     ValidationBehavior,
 )
 from pydomain.cqrs.locking import DictLockKeyResolver
-from pydomain.testing import FakeLockProvider, FakeProcessedCommandStore
+from pydomain.testing import FakeLockProvider, FakeProcessedMessageStore
 
 # ── Next handler factories ──────────────────────────────────────────
 
@@ -660,7 +660,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_new_command_passes_through_and_caches_result(self) -> None:
         """First time a command ID is seen: handler runs, result is cached."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
         command_id = uuid4()
 
@@ -681,7 +681,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_duplicate_command_returns_cached_result(self) -> None:
         """Second time: cached result returned, inner handler NOT called."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
         command_id = uuid4()
         cached_result = {"status": "already_done"}
@@ -703,7 +703,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_missing_command_id_passes_through(self) -> None:
         """When ctx.metadata has no 'command_id', delegate to next() directly."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
 
         _next, called = make_trackable_next()
@@ -720,7 +720,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_cached_none_result_is_returned(self) -> None:
         """A handler that returns None -- the cached result is correctly returned."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
         command_id = uuid4()
 

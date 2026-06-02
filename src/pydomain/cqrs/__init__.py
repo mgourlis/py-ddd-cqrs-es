@@ -19,7 +19,7 @@ from pydomain.cqrs.exceptions import (
     NoHandlerRegisteredError,
 )
 from pydomain.cqrs.handlers import CommandHandler, EventHandler, QueryHandler
-from pydomain.cqrs.idempotency import MISSING, ProcessedCommandStore
+from pydomain.cqrs.idempotency import MISSING, ProcessedMessageStore
 from pydomain.cqrs.integration_events import IntegrationEvent
 from pydomain.cqrs.locking import (
     DictLockKeyResolver,
@@ -71,7 +71,7 @@ __all__ = [
     "NextHandler",
     "NoHandlerRegisteredError",
     "PipelineBehavior",
-    "ProcessedCommandStore",
+    "ProcessedMessageStore",
     "Projection",
     "ProjectionStore",
     "Query",

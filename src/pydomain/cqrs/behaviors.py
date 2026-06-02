@@ -16,7 +16,7 @@ from enum import Enum, auto
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-from pydomain.cqrs.idempotency import MISSING, ProcessedCommandStore
+from pydomain.cqrs.idempotency import MISSING, ProcessedMessageStore
 from pydomain.cqrs.locking import LockKeyResolver, LockProvider
 from pydomain.ddd.domain_event import DomainEvent
 
@@ -294,7 +294,7 @@ class AggregateLockingBehavior:
 class IdempotencyBehavior:
     """Pipeline behavior that caches and returns results for duplicate commands.
 
-    Checks the :class:`~pydomain.cqrs.idempotency.ProcessedCommandStore`
+    Checks the :class:`~pydomain.cqrs.idempotency.ProcessedMessageStore`
     before delegating to the inner handler.  If the command has already
     been processed the cached result is returned immediately — the inner
     handler is never called.
@@ -308,7 +308,7 @@ class IdempotencyBehavior:
     non-command messages to flow through the same pipeline).
     """
 
-    def __init__(self, store: ProcessedCommandStore) -> None:
+    def __init__(self, store: ProcessedMessageStore) -> None:
         self._store = store
 
     async def handle(self, ctx: MessageContext, next: NextHandler) -> Any:
