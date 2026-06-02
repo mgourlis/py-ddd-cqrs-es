@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydomain.cqrs.integration_events import IntegrationEvent
 
 
@@ -14,14 +16,20 @@ class InMemoryMessageBroker:
     Parameters
     ----------
     published:
-        List of ``(topic, event)`` tuples captured from ``publish()`` calls.
+        List of ``(topic, event, headers)`` tuples captured from
+        ``publish()`` calls.
     """
 
     def __init__(self) -> None:
-        self.published: list[tuple[str, IntegrationEvent]] = []
+        self.published: list[tuple[str, IntegrationEvent, dict[str, str]]] = []
 
-    async def publish(self, topic: str, event: IntegrationEvent) -> None:
-        """Append ``(topic, event)`` to the published list.
+    async def publish(
+        self,
+        topic: str,
+        event: IntegrationEvent,
+        **kwargs: Any,
+    ) -> None:
+        """Append ``(topic, event, headers)`` to the published list.
 
         Parameters
         ----------
@@ -29,8 +37,12 @@ class InMemoryMessageBroker:
             The topic the event was published to.
         event:
             The published integration event.
+        **kwargs:
+            Forwarded to ``published`` entries when they contain a
+            ``headers`` key.
         """
-        self.published.append((topic, event))
+        headers: dict[str, str] = kwargs.get("headers", {})
+        self.published.append((topic, event, headers))
 
     async def start(self) -> None:
         """No-op. Included for protocol conformance."""

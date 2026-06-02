@@ -66,13 +66,14 @@ class TestInMemoryMessageBroker:
 
     @pytest.mark.anyio
     async def test_published_tuple_structure(self) -> None:
-        """Each published entry is a (topic, event) tuple."""
+        """Each published entry is a (topic, event, headers) tuple."""
         broker = InMemoryMessageBroker()
         event = _OrderPlaced(order_id="order-101")
         await broker.publish("orders", event)
-        topic, published_event = broker.published[0]
+        topic, published_event, headers = broker.published[0]
         assert topic == "orders"
         assert published_event is event
+        assert headers == {}
 
     @pytest.mark.anyio
     async def test_topic_routing(self) -> None:
@@ -121,3 +122,25 @@ class TestInMemoryMessageBroker:
 
         assert "MessageBroker" in infra_all
         assert "InMemoryMessageBroker" in testing_all
+
+    # ── Headers support ─────────────────────────────────────────────────────
+
+    @pytest.mark.anyio
+    async def test_publish_with_headers(self) -> None:
+        """publish() accepts and records headers."""
+        broker = InMemoryMessageBroker()
+        event = _OrderPlaced(order_id="order-400")
+        await broker.publish("orders", event, headers={"traceparent": "00-abc-xyz-01"})
+        topic, published_event, headers = broker.published[0]
+        assert topic == "orders"
+        assert published_event is event
+        assert headers == {"traceparent": "00-abc-xyz-01"}
+
+    @pytest.mark.anyio
+    async def test_publish_without_headers_defaults_to_empty(self) -> None:
+        """publish() without headers records an empty dict."""
+        broker = InMemoryMessageBroker()
+        event = _OrderPlaced(order_id="order-500")
+        await broker.publish("orders", event)
+        _topic, _ev, headers = broker.published[0]
+        assert headers == {}  # type: ignore[unreachable]
