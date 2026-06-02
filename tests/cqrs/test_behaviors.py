@@ -10,6 +10,7 @@ import pytest
 
 from pydomain.cqrs.behaviors import (
     AggregateLockingBehavior,
+    EventIdempotencyBehavior,
     IdempotencyBehavior,
     LoggingBehavior,
     MessageContext,
@@ -18,7 +19,10 @@ from pydomain.cqrs.behaviors import (
     ValidationBehavior,
 )
 from pydomain.cqrs.locking import DictLockKeyResolver
-from pydomain.testing import FakeLockProvider, FakeProcessedCommandStore
+from pydomain.ddd.domain_event import DomainEvent
+from pydomain.testing import FakeLockProvider, FakeProcessedMessageStore
+
+# ── Sample types ─────────────────────────────────────────────────────
 
 # ── Next handler factories ──────────────────────────────────────────
 
@@ -660,7 +664,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_new_command_passes_through_and_caches_result(self) -> None:
         """First time a command ID is seen: handler runs, result is cached."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
         command_id = uuid4()
 
@@ -681,7 +685,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_duplicate_command_returns_cached_result(self) -> None:
         """Second time: cached result returned, inner handler NOT called."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
         command_id = uuid4()
         cached_result = {"status": "already_done"}
@@ -703,7 +707,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_missing_command_id_passes_through(self) -> None:
         """When ctx.metadata has no 'command_id', delegate to next() directly."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
 
         _next, called = make_trackable_next()
@@ -720,7 +724,7 @@ class TestIdempotencyBehavior:
     @pytest.mark.anyio
     async def test_cached_none_result_is_returned(self) -> None:
         """A handler that returns None -- the cached result is correctly returned."""
-        store = FakeProcessedCommandStore()
+        store = FakeProcessedMessageStore()
         behavior = IdempotencyBehavior(store)
         command_id = uuid4()
 
@@ -754,3 +758,92 @@ class TestIdempotencyBehavior:
             "next handler should NOT have been called on duplicate"
         )
         assert result2 is None, "cached None should be returned"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Event idempotency
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class _SampleEvent(DomainEvent):
+    """Test event type for EventIdempotencyBehavior tests."""
+
+    data: str
+
+
+class TestEventIdempotencyBehavior:
+    """EventIdempotencyBehavior skips duplicate events."""
+
+    @pytest.mark.anyio
+    async def test_new_event_passes_through(self) -> None:
+        """A causation_id not in the store passes through to the handler."""
+        store = FakeProcessedMessageStore()
+        behavior = EventIdempotencyBehavior(store)
+        event = _SampleEvent(data="first", causation_id=uuid4())
+
+        async def handler(event: _SampleEvent) -> None:
+            pass
+
+        ctx = MessageContext(
+            message=event,
+            handler=handler,
+            kind=MessageKind.EVENT,
+        )
+
+        result = await behavior.handle(ctx, make_next(return_value="ok"))
+
+        assert result == "ok"
+
+    @pytest.mark.anyio
+    async def test_duplicate_event_skipped(self) -> None:
+        """Same causation_id causes the handler to be skipped."""
+        store = FakeProcessedMessageStore()
+        behavior = EventIdempotencyBehavior(store)
+        causation_id = uuid4()
+
+        # Process first event — goes through
+        event1 = _SampleEvent(data="first", causation_id=causation_id)
+
+        async def handler(event: _SampleEvent) -> None:
+            pass
+
+        ctx1 = MessageContext(
+            message=event1,
+            handler=handler,
+            kind=MessageKind.EVENT,
+        )
+        await behavior.handle(ctx1, make_next(return_value="ok"))
+
+        # Second event with same causation_id — gets skipped
+        event2 = _SampleEvent(data="second", causation_id=causation_id)
+        ctx2 = MessageContext(
+            message=event2,
+            handler=handler,
+            kind=MessageKind.EVENT,
+        )
+        result = await behavior.handle(ctx2, make_next(return_value="ok"))
+
+        assert result is None
+
+    @pytest.mark.anyio
+    async def test_no_causation_id_passes_through(self) -> None:
+        """An event with causation_id=None always passes through."""
+        store = FakeProcessedMessageStore()
+        behavior = EventIdempotencyBehavior(store)
+        event = _SampleEvent(data="test")  # causation_id is None
+
+        async def handler(event: _SampleEvent) -> None:
+            pass
+
+        ctx = MessageContext(
+            message=event,
+            handler=handler,
+            kind=MessageKind.EVENT,
+        )
+
+        # Calling twice — both should pass through
+        result1 = await behavior.handle(ctx, make_next(return_value="ok"))
+        result2 = await behavior.handle(ctx, make_next(return_value="ok"))
+
+        assert result1 == "ok"
+        assert result2 == "ok"

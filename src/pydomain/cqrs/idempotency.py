@@ -1,7 +1,7 @@
 """Idempotency primitives for the CQRS pipeline.
 
-Defines the ``ProcessedCommandStore`` Protocol (abstraction for
-tracking processed command IDs) and the ``MISSING`` sentinel that
+Defines the ``ProcessedMessageStore`` Protocol (abstraction for
+tracking processed message IDs) and the ``MISSING`` sentinel that
 distinguishes "never processed" from a cached ``None`` result.
 """
 
@@ -11,26 +11,47 @@ from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 MISSING: Any = object()
-"""Sentinel returned by :class:`ProcessedCommandStore` when no cached result exists."""
+"""Sentinel returned by :class:`ProcessedMessageStore` when no cached result exists."""
 
 
 @runtime_checkable
-class ProcessedCommandStore(Protocol):
-    """Protocol for storage backends that track which command IDs have been processed.
+class ProcessedMessageStore(Protocol):
+    """Protocol for storage backends that track which message IDs have been processed.
 
-    Implementations store ``CommandResult`` values keyed by command UUID
-    so that duplicate commands can return the cached result instead of
-    executing the handler again.
+    Used by :class:`~pydomain.cqrs.behaviors.IdempotencyBehavior` (commands
+    cache results) and :class:`~pydomain.cqrs.event_bus.EventBus` (events
+    check-and-set).
+
+    Implementations should provide atomic check-and-set semantics to prevent
+    races when the same message arrives concurrently.
     """
 
-    async def get(self, command_id: UUID) -> Any:
-        """Return the cached result for *command_id*, or ``MISSING``."""
+    async def get(self, message_id: UUID) -> Any:
+        """Return the cached result for *message_id*, or ``MISSING``.
+
+        Used by the command idempotency path to return a previously cached
+        ``CommandResult``.
+        """
         ...
 
-    async def set(self, command_id: UUID, result: Any) -> None:
-        """Persist *result* for *command_id*."""
+    async def set(self, message_id: UUID, result: Any) -> None:
+        """Persist *result* for *message_id*.
+
+        Used by the command idempotency path to cache a ``CommandResult``.
+        """
         ...
 
-    async def contains(self, command_id: UUID) -> bool:
-        """Return ``True`` if *command_id* has already been processed."""
+    async def contains(self, message_id: UUID) -> bool:
+        """Return ``True`` if *message_id* has already been processed."""
+        ...
+
+    async def check_and_set(self, message_id: UUID) -> bool:
+        """Atomically check *message_id* and mark it as processed.
+
+        Returns ``True`` if the ID was already processed (caller should
+        skip duplicate handling), ``False`` if this is the first time.
+
+        Used by the event idempotency path where no result caching is
+        needed — the event is either consumed or skipped.
+        """
         ...

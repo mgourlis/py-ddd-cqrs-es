@@ -1,11 +1,12 @@
 """Message subscriber protocol and inbound event gateway.
 
 The ``MessageSubscriber`` protocol defines the contract for receiving
-integration events from external brokers (Kafka, RabbitMQ). The
+integration events from external brokers (Kafka, RabbitMQ).  The
 ``InboundEventGateway`` bridges the subscriber side by hydrating raw
-JSON payloads into typed ``IntegrationEvent`` instances, translating them
-to ``DomainEvent`` instances, and dispatching them into the internal
-``MessageBus``.
+JSON payloads into typed ``IntegrationEvent`` instances, reading any
+tracing metadata (``correlation_id``, ``causation_id``), translating
+them to ``DomainEvent`` instances, and dispatching them into the
+internal ``MessageBus``.
 
 Message Acknowledgment
 ----------------------
@@ -70,6 +71,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -123,9 +125,14 @@ class InboundEventGateway:
 
     Receives raw JSON payloads from a ``MessageSubscriber``, hydrates them
     into typed ``IntegrationEvent`` instances (flat payload pattern — the
-    topic implies the type, not an envelope), translates them to
+    topic implies the type), reads tracing metadata when present
+    (``correlation_id``, ``causation_id``), translates them to
     ``DomainEvent`` instances via an Anti-Corruption Layer translator, and
     dispatches them into the ``MessageBus`` for internal routing.
+
+    When the integration event carries tracing IDs, the gateway
+    automatically stamps them onto the translated domain event via
+    :meth:`DomainEvent.stamp`, preserving the cross-service trace chain.
 
     Parameters
     ----------
@@ -197,7 +204,9 @@ class InboundEventGateway:
         2. Hydrate the payload into an ``IntegrationEvent`` via
            ``model_validate``.
         3. Translate the integration event to a ``DomainEvent``.
-        4. Dispatch the domain event into the ``MessageBus``.
+        4. Stamp the domain event with tracing IDs when present on the
+           integration event.
+        5. Dispatch the domain event into the ``MessageBus``.
 
         Parameters
         ----------
@@ -236,6 +245,31 @@ class InboundEventGateway:
                 topic,
             )
             return
+
+        # Stamp the domain event with tracing IDs from the integration
+        # event.  correlation_id preserves the business process chain.
+        # causation_id is set to the integration event's OWN event_id
+        # (not its causation_id) because the integration event IS the
+        # direct cause of this domain event.  This also provides
+        # consumer-side idempotency: if the broker redelivers the same
+        # integration event, the resulting domain event gets the same
+        # causation_id.
+        if integration_event.correlation_id:
+            try:
+                domain_event = domain_event.stamp(
+                    correlation_id=UUID(integration_event.correlation_id),
+                    causation_id=UUID(integration_event.event_id),
+                )
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Invalid tracing IDs on %s for topic '%s' — "
+                    "correlation_id=%r event_id=%r. "
+                    "Dispatching without tracing.",
+                    integration_class.__name__,
+                    topic,
+                    integration_event.correlation_id,
+                    integration_event.event_id,
+                )
 
         # Dispatch into the internal message bus.
         try:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import ClassVar, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,7 +43,7 @@ class DomainEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    def stamp(self, *, correlation_id: UUID, causation_id: UUID) -> DomainEvent:
+    def stamp(self, *, correlation_id: UUID, causation_id: UUID) -> Self:
         """Return a new frozen copy with tracing IDs set.
 
         Called by the UnitOfWork during ``commit()``. The original event

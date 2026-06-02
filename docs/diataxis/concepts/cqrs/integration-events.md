@@ -17,6 +17,7 @@
 | Serialization | Python objects | JSON (broker-compatible) |
 | ID type | `UUID` | `str` |
 | Timestamp | `datetime` | `str` (ISO 8601) |
+| Tracing | `correlation_id`/`causation_id` (UUID) | `correlation_id`/`causation_id` (str) |
 
 ## The `IntegrationEvent` Base Class
 
@@ -26,18 +27,49 @@ from pydomain.cqrs.integration_events import IntegrationEvent
 
 
 class IntegrationEvent(BaseModel):
-    event_id: str = Field(default_factory=...)     # UUIDv7 as string
-    occurred_at: str = Field(default_factory=...)   # ISO 8601 UTC
+    event_id: str = Field(default_factory=...)        # UUIDv7 as string
+    occurred_at: str = Field(default_factory=...)      # ISO 8601 UTC
+    correlation_id: str | None = None                  # Business process ID
+    causation_id: str | None = None                    # Direct cause ID
 
     model_config = ConfigDict(frozen=True)
+
+    def stamp(self, *, correlation_id: str, causation_id: str) -> Self: ...
 ```
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `event_id` | `str` | Unique event identifier (UUIDv7 as string) |
 | `occurred_at` | `str` | ISO 8601 UTC timestamp |
+| `correlation_id` | `str \| None` | Business process identifier — links all events in a workflow |
+| `causation_id` | `str \| None` | ID of the event/command that directly caused this one |
 
-Both fields are strings (not UUID/datetime) to satisfy broker serialization without custom encoders.
+All fields are strings (not UUID/datetime) to satisfy broker serialization without custom encoders. `correlation_id` and `causation_id` default to `None` — they are typically set via `stamp()` before publishing.
+
+## Distributed Tracing
+
+Integration events carry the same tracing fields as domain events (`correlation_id` / `causation_id`), but as strings to satisfy the primitive-only constraint. This enables end-to-end workflow visibility across microservice boundaries:
+
+```
+Service A                                        Service B
+─────────                                        ─────────
+Command (correlation_id=cid1)
+  → DomainEvent (cid1, event_id1)
+    → IntegrationEvent.stamp(cid1, event_id1)
+      → Broker ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ → Gateway
+                                          → DomainEvent (cid1, event_id1)
+                                            → Saga continues chain
+```
+
+The `stamp_from()` convenience method copies tracing IDs from a domain event in one call:
+
+```python
+integration = OrderShipped(order_id="ORD-1", tracking="TRACK123")
+stamped = integration.stamp_from(domain_event)
+await broker.publish("orders.shipped", stamped)
+```
+
+On the receiving side, the [`InboundEventGateway`](../infrastructure/inbound-event-gateway.md) automatically reads tracing IDs from the incoming integration event and stamps them onto the translated domain event — translators don't need to handle tracing at all.
 
 ## Primitive-Only Payload
 

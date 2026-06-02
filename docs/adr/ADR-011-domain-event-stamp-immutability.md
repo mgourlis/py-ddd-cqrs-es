@@ -69,10 +69,12 @@ The original event is never modified — immutability is preserved.
 
 ### Neutral
 
-- `stamp()` returns `DomainEvent` (not `Self`) — callers must downcast if they need the concrete event type with tracing IDs. This is acceptable because event handlers typically receive `DomainEvent` and access tracing IDs from the base class fields.
+- `stamp()` returns `Self` — subclasses preserve their concrete type through the stamp call. This was originally `DomainEvent` but was changed to `Self` in 2026-05 for consistency with `IntegrationEvent.stamp()`.
 
 ## References
 
-- `src/pydomain/ddd/domain_event.py` — `DomainEvent.stamp()` method
+- `src/pydomain/ddd/domain_event.py` — `DomainEvent.stamp()` method (returns `Self`)
+- `src/pydomain/cqrs/integration_events.py` — `IntegrationEvent.stamp()` and `.stamp_from()` (mirrors this pattern)
 - `src/pydomain/cqrs/unit_of_work.py` — `AbstractUnitOfWork._collect_and_stamp()` calls `stamp()` on each event
 - ADR-005: Publish Events After Commit, Never Before
+- ADR-061: Integration Event Distributed Tracing
