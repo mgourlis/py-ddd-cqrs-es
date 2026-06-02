@@ -1,5 +1,6 @@
 from pydomain.cqrs.behaviors import (
     AggregateLockingBehavior,
+    EventIdempotencyBehavior,
     IdempotencyBehavior,
     LoggingBehavior,
     MessageContext,
@@ -52,6 +53,7 @@ __all__ = [
     "CommandBus",
     "CommandExecutionError",
     "CommandHandler",
+    "EventIdempotencyBehavior",
     "EventHandler",
     "CommandResult",
     "CQRSError",

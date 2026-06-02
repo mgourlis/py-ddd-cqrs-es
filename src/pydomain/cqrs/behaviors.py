@@ -323,3 +323,56 @@ class IdempotencyBehavior:
         result = await next()
         await self._store.set(command_id, result)
         return result
+
+
+class EventIdempotencyBehavior:
+    """Pipeline behavior that skips duplicate event handling.
+
+    Checks the :class:`~pydomain.cqrs.idempotency.ProcessedMessageStore`
+    before delegating to the inner handler.  If the event has already been
+    processed (same ``causation_id`` seen before), the handler is skipped.
+
+    Unlike :class:`IdempotencyBehavior` (which caches command results),
+    this behavior only marks the event as processed — there is no result
+    to cache because event handlers return ``None``.
+
+    The dedup key is the event's ``causation_id``, which for inbound
+    events from a message broker is set to the integration event's
+    *event_id* by the ``InboundEventGateway`` — deterministic across
+    redeliveries.
+
+    If the event has no ``causation_id`` (``None``), the behavior passes
+    through without consulting the store, allowing events that have not
+    been stamped (e.g., direct in-process dispatch without a gateway) to
+    always be handled.
+
+    Example::
+
+        store = MyEventStore()  # implements ProcessedMessageStore
+        bus = EventBus()
+        bus.register(
+            OrderReceived,
+            my_handler,
+            behaviors=[EventIdempotencyBehavior(store)],
+        )
+    """
+
+    def __init__(self, store: ProcessedMessageStore) -> None:
+        self._store = store
+
+    async def handle(self, ctx: MessageContext, next: NextHandler) -> Any:
+        event = ctx.message
+        if not isinstance(event, DomainEvent) or event.causation_id is None:
+            return await next()
+
+        already_processed = await self._store.check_and_set(event.causation_id)
+        if already_processed:
+            _logger = logging.getLogger("pydomain.pipeline")
+            _logger.info(
+                "Skipping duplicate event %s (causation_id=%s)",
+                type(event).__name__,
+                event.causation_id,
+            )
+            return None
+
+        return await next()
