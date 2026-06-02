@@ -559,6 +559,34 @@ needed, follows the DRY principle and makes the saga's timeout policy visible in
 
 ---
 
+
+
+## 9.16 EventBus — Application Layer Peer
+
+### Context
+
+The library had three message types (Commands, Queries, Domain Events) but only two buses in the application layer. Event dispatch was inlined in `MessageBus` (infrastructure facade, per ADR-045), creating architectural asymmetry.
+
+### Decision
+
+Extract `EventBus` into `src/pydomain/cqrs/event_bus.py` as a concrete class and peer of `CommandBus`/`QueryBus`. `MessageBus` gains an optional `event_bus` parameter and delegates all event operations to it.
+
+Idempotency for events is handled by `EventIdempotencyBehavior`, a pipeline behavior consistent with the existing `IdempotencyBehavior` for commands. The `ProcessedCommandStore` protocol is renamed to `ProcessedMessageStore` and gains an atomic `check_and_set()` method to serve both.
+
+### Rationale
+
+- **Consistency** — All three message bus types now live in the application layer.
+- **Opt-in idempotency** — Event handlers choose whether to be idempotent via a pipeline behavior, matching the command-side pattern.
+- **Unified store** — `ProcessedMessageStore` covers both commands (result caching) and events (mark-only), reducing protocol surface area.
+
+### Consequences
+
+- `EventBus` can be used standalone without `MessageBus`.
+- Event idempotency is per-handler, not blanket all-or-nothing.
+- Logger namespace for event errors shifts from `pydomain.message_bus` to `pydomain.event_bus`.
+
+---
+
 ## Section → ADR Mapping
 
 The narrative sections above correspond to these formal Architecture Decision Records:
@@ -583,10 +611,12 @@ The narrative sections above correspond to these formal Architecture Decision Re
 | DomainEvent Dispatch | [ADR-058](../adr/ADR-058-messagebus-dispatch-domain-event.md) |
 | MessageSubscriber Protocol | [ADR-059](../adr/ADR-059-message-subscriber-protocol.md) |
 | InboundEventGateway | [ADR-060](../adr/ADR-060-inbound-event-gateway.md) |
+| Integration Event Tracing | [ADR-061](../adr/ADR-061-integration-event-tracing.md) |
+| EventBus Application Layer Peer | [ADR-062](../adr/ADR-062-eventbus-application-layer-peer.md) |
 
 ---
 
-## ADR Reference — All 60 Decisions
+## ADR Reference — All 62 Decisions
 
 ### Base / Foundational (001–005)
 
@@ -722,3 +752,15 @@ The narrative sections above correspond to these formal Architecture Decision Re
 | ADR | Title |
 |-----|-------|
 | [ADR-060](../adr/ADR-060-inbound-event-gateway.md) | InboundEventGateway — bridging external brokers to the internal MessageBus |
+
+### Integration Event Tracing (061)
+
+| ADR | Title |
+|-----|-------|
+| [ADR-061](../adr/ADR-061-integration-event-tracing.md) | Integration Event Distributed Tracing — `correlation_id` / `causation_id` |
+
+### EventBus Application Layer Peer (062)
+
+| ADR | Title |
+|-----|-------|
+| [ADR-062](../adr/ADR-062-eventbus-application-layer-peer.md) | EventBus as First-Class Citizen in the Application Layer |

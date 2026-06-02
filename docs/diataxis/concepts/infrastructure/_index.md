@@ -24,6 +24,7 @@ Understanding-oriented documentation for the infrastructure layer — bootstrap,
 
 | Page | Topic |
 |------|-------|
+| [Distributed Tracing](tracing.md) | Extension pattern — implementing tracing via PipelineBehavior, MessageBroker, and MessageSubscriber |
 | [Exception Hierarchy](exception-hierarchy.md) | Domain error types and handling philosophy |
 
 ## Related Sections

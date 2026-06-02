@@ -5,7 +5,7 @@
 
 ## What is the Message Bus?
 
-The **Message Bus** is the central dispatch mechanism for all message types — commands, queries, and events. It's not a single class but a pattern embodied by the `CommandBus` for write operations, the `QueryBus` for read operations, and registered event handlers for domain event reactions. A unified `dispatch()` method routes commands to the `CommandBus`, queries to the `QueryBus`, and domain events directly to registered handlers.
+The **Message Bus** is the central dispatch mechanism for all message types — commands, queries, and events. It's not a single class but a pattern embodied by the `CommandBus` for write operations, the `QueryBus` for read operations, and the `EventBus` for domain event dispatch. A unified `dispatch()` method routes commands to the `CommandBus`, queries to the `QueryBus`, and domain events to the `EventBus`.
 
 ## Message Flow
 
@@ -14,16 +14,16 @@ The **Message Bus** is the central dispatch mechanism for all message types — 
                    │  MessageBus  │
                    └──────┬──────┘
                           │
-          ┌───────────────┼──────────────────┐
-          │               │                  │
-     CommandBus       QueryBus      Event Handlers
-          │               │                  │
-     Commands         Queries       Domain Events
-     (modify)         (read)        (react / dispatch)
+          ┌───────────────┼─────────────────┐
+          │               │                 │
+     CommandBus       QueryBus          EventBus
+          │               │                 │
+     Commands         Queries      Domain Events
+     (modify)         (read)       (react / dispatch)
 
      Domain events arrive via two paths:
-     ① Collected after command commit (side-effect)
-     ② Direct dispatch via bus.dispatch(event)
+     ① Collected after command commit → EventBus.dispatch_many()
+     ② Direct dispatch → EventBus.dispatch() (via InboundEventGateway)
 ```
 
 ## CommandBus: The Write Path
@@ -92,7 +92,7 @@ This pattern enables saga-like workflows: event → handler → command → even
 |-------------|---------------|--------|-------------------|
 | Command | `CommandBus` | `register(command_type, handler, uow_factory, behaviors)` | `(command, uow) → result` |
 | Query | `QueryBus` | `register(query_type, handler, behaviors)` | `(query) → result` |
-| Event | `MessageBus` | `register_event(event_type, handler)` | `(event) → None` |
+| Event | `MessageBus` (delegates to `EventBus`) | `register_event(event_type, handler, behaviors)` | `(event) → None` |
 
 ## Unified Dispatch
 
@@ -108,17 +108,17 @@ async def dispatch(
 |-------------|-------|-----|----------|---------|
 | `Command` | → `CommandBus` | Yes | Yes | `CommandResult` |
 | `Query` | → `QueryBus` | No | Yes | `QueryResult` |
-| `DomainEvent` | → Event Handlers | No | No | `None` |
+| `DomainEvent` | → `EventBus` → Event Handlers | No | Per-handler via behaviors | `None` |
 
-Domain events skip both the UoW and pipeline behaviors — they represent already-committed state, whether emitted internally after a command commit or arriving from an external broker through the `InboundEventGateway`.
+Domain events skip the UoW — they represent already-committed state, whether emitted internally after a command commit or arriving from an external broker through the `InboundEventGateway`. Pipeline behaviors configured on the event handler itself (e.g., `EventIdempotencyBehavior`) are still applied; what they skip is the bus-level behavior pipeline.
 
-## Pipeline Behaviors on Both Sides
+## Pipeline Behaviors on All Message Types
 
-Both the Command Bus and Query Bus support pipeline behaviors:
+The Command Bus, Query Bus, and Event Bus all support pipeline behaviors:
 
 ```python
 # Command pipeline
-bus.register(
+bus.register_command(
     command_type=PlaceOrder,
     handler=handler,
     uow_factory=uow_factory,
@@ -126,14 +126,21 @@ bus.register(
 )
 
 # Query pipeline
-query_bus.register(
+bus.register_query(
     query_type=GetOrder,
     handler=handler,
     behaviors=[LoggingBehavior()],
 )
+
+# Event pipeline (via MessageBus.register_event or EventBus.register)
+bus.register_event(
+    event_type=OrderPlaced,
+    handler=email_handler,
+    behaviors=[EventIdempotencyBehavior(store)],
+)
 ```
 
-Behaviors apply to commands and queries independently — you can add logging to all messages, validation only to commands, etc.
+Behaviors apply to each message type independently — you can add logging to all messages, validation only to commands, idempotency to events, etc.
 
 ## Dependency Injection Pattern
 

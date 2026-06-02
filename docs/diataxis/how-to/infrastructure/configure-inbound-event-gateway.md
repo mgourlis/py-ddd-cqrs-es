@@ -233,9 +233,12 @@ When a message arrives on the `"shipping.shipment.failed"` topic:
 2. It calls the handler registered by the gateway
 3. `_process_message()` hydrates `ShipmentFailedIntegrationEvent` via `model_validate`
 4. Calls `translate_shipment_failed()` to produce an `ExternalShipmentFailed` domain event
-5. Calls `message_bus.dispatch(domain_event)` — the bus routes it to `UpdateOrderStatusOnShipmentFailedHandler`
-6. If the handler succeeds, the subscriber ACKs the message
-7. If the handler fails, the exception propagates and the subscriber NACKs for retry
+5. **Auto-stamps** the domain event with `correlation_id`/`causation_id` from the integration event (when present)
+6. Calls `message_bus.dispatch(domain_event)` — the bus routes it to `UpdateOrderStatusOnShipmentFailedHandler`
+7. If the handler succeeds, the subscriber ACKs the message
+8. If the handler fails, the exception propagates and the subscriber NACKs for retry
+
+**No changes needed in your translator** — the gateway reads tracing IDs from the incoming integration event automatically. If the publisher stamped the integration event with `correlation_id`/`causation_id` (see [ADR-061](../../../adr/ADR-061-integration-event-tracing.md)), the trace chain continues seamlessly into your domain handlers.
 
 ## Failure Handling
 

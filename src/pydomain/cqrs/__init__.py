@@ -1,5 +1,6 @@
 from pydomain.cqrs.behaviors import (
     AggregateLockingBehavior,
+    EventIdempotencyBehavior,
     IdempotencyBehavior,
     LoggingBehavior,
     MessageContext,
@@ -11,6 +12,7 @@ from pydomain.cqrs.behaviors import (
 )
 from pydomain.cqrs.command_bus import CommandBus
 from pydomain.cqrs.commands import Command, CommandResult, EmptyCommandResult
+from pydomain.cqrs.event_bus import EventBus
 from pydomain.cqrs.exceptions import (
     CommandExecutionError,
     CQRSError,
@@ -19,7 +21,7 @@ from pydomain.cqrs.exceptions import (
     NoHandlerRegisteredError,
 )
 from pydomain.cqrs.handlers import CommandHandler, EventHandler, QueryHandler
-from pydomain.cqrs.idempotency import MISSING, ProcessedCommandStore
+from pydomain.cqrs.idempotency import MISSING, ProcessedMessageStore
 from pydomain.cqrs.integration_events import IntegrationEvent
 from pydomain.cqrs.locking import (
     DictLockKeyResolver,
@@ -52,6 +54,8 @@ __all__ = [
     "CommandBus",
     "CommandExecutionError",
     "CommandHandler",
+    "EventBus",
+    "EventIdempotencyBehavior",
     "EventHandler",
     "CommandResult",
     "CQRSError",
@@ -71,7 +75,7 @@ __all__ = [
     "NextHandler",
     "NoHandlerRegisteredError",
     "PipelineBehavior",
-    "ProcessedCommandStore",
+    "ProcessedMessageStore",
     "Projection",
     "ProjectionStore",
     "Query",

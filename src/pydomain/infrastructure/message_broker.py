@@ -1,7 +1,7 @@
 """Message broker protocol and in-memory implementation.
 
 The ``MessageBroker`` protocol defines the contract for publishing integration
-events to external message brokers (RabbitMQ, Kafka, etc.). The
+events to external message brokers (RabbitMQ, Kafka, etc.).  The
 ``InMemoryMessageBroker`` provides a test double that captures published
 events for test assertions.
 """
@@ -9,7 +9,7 @@ events for test assertions.
 from __future__ import annotations
 
 import logging
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pydomain.cqrs.integration_events import IntegrationEvent
 
@@ -25,7 +25,12 @@ class MessageBroker(Protocol):
     can use ``isinstance()`` checks.
     """
 
-    async def publish(self, topic: str, event: IntegrationEvent) -> None:
+    async def publish(
+        self,
+        topic: str,
+        event: IntegrationEvent,
+        **kwargs: Any,
+    ) -> None:
         """Publish an integration event to the given topic.
 
         Parameters
@@ -33,7 +38,15 @@ class MessageBroker(Protocol):
         topic:
             The topic or routing key to publish to.
         event:
-            The integration event to publish.
+            The integration event to publish.  Should be stamped with
+            ``correlation_id`` and ``causation_id`` via
+            :meth:`IntegrationEvent.stamp` for cross-service traceability.
+        **kwargs:
+            Additional transport-level keyword arguments (e.g.
+            ``headers`` for W3C trace context propagation).  Concrete
+            broker implementations should extract and propagate
+            recognised keyword arguments, ignoring those they do not
+            support.
         """
 
     async def start(self) -> None:
