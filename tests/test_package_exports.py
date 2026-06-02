@@ -119,6 +119,7 @@ class TestTopLevelCqrsExports:
         "CQRSError",
         "DictLockKeyResolver",
         "EmptyCommandResult",
+        "EventBus",
         "EventIdempotencyBehavior",
         "HandlerAlreadyRegisteredError",
         "IdempotencyBehavior",
