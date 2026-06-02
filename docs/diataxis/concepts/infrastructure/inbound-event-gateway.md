@@ -33,8 +33,11 @@ External Broker (Kafka/RabbitMQ)
         ├── 1. Look up (IntegrationEvent class, translator) for topic
         ├── 2. integration_class.model_validate(payload)   → IntegrationEvent
         ├── 3. translator(integration_event)               → DomainEvent
-        └── 4. message_bus.dispatch(domain_event)           → internal handlers
+        ├── 4. stamp tracing IDs on domain event (when present)
+        └── 5. message_bus.dispatch(domain_event)           → internal handlers
 ```
+
+**Steps 4-5 are automatic** — when the integration event carries `correlation_id` and `causation_id`, the gateway stamps them onto the translated domain event via `DomainEvent.stamp()`. Translators don't need to know about tracing at all.
 
 ## The Class
 
@@ -193,7 +196,7 @@ The `Application` class accepts an `inbound_gateways: list[InboundEventGateway]`
 
 ## Design Decision
 
-The gateway uses a **topic-based dispatch** pattern rather than an envelope pattern. The topic string implies the event type — the payload doesn't carry a `type` field. This is simpler (no envelope schema to agree on) but requires that each topic carries exactly one integration event type.
+The gateway uses a **topic-based dispatch** pattern. The topic string implies the event type — the payload doesn't carry a `type` field. Tracing metadata (`correlation_id`, `causation_id`) travels on the integration event itself (see ADR-061), not in a separate envelope.
 
 ## Next Steps
 

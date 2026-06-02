@@ -114,33 +114,56 @@ Locks are acquired in **sorted** order (deadlock prevention) and released in rev
 
 ### IdempotencyBehavior
 
-Caches and returns results for duplicate commands. Checks the `ProcessedCommandStore` before delegating to the inner handler:
+Caches and returns results for duplicate commands. Checks the `ProcessedMessageStore` before delegating to the inner handler:
 
 ```python
 from pydomain.cqrs.behaviors import IdempotencyBehavior
 
-behavior = IdempotencyBehavior(store=redis_processed_command_store)
+behavior = IdempotencyBehavior(store=redis_processed_message_store)
 ```
 
 If a command has already been processed, the cached result is returned immediately — the handler is never called.
 
-## Pipeline Slot Order
+### EventIdempotencyBehavior
 
-The recommended behavior ordering:
+Skips duplicate event handling for events arriving from external message brokers (at-least-once delivery). Checks the `ProcessedMessageStore` keyed on the event's `causation_id`:
 
-| Slot | Behavior | Purpose |
-|------|----------|---------|
-| 1 | `LoggingBehavior` | Log every dispatch |
-| 2 | `ValidationBehavior` | Fail fast on invalid input |
-| 3 | `IdempotencyBehavior` | Skip already-processed commands |
-| 4 | `AggregateLockingBehavior` | Prevent concurrent aggregate access |
-| — | Terminal handler | Your business logic |
+```python
+from pydomain.cqrs.behaviors import EventIdempotencyBehavior
 
-This order ensures logging wraps everything, validation fails fast before any locks are acquired, and idempotency checks avoid wasted lock work on duplicate commands.
+behavior = EventIdempotencyBehavior(store=redis_processed_message_store)
+```
+
+The dedup key is the event's `causation_id`, which for inbound events from the `InboundEventGateway` is set to the integration event's `event_id` — deterministic across redeliveries. Events without a `causation_id` always pass through.
+
+Unlike `IdempotencyBehavior` (which caches command results), this behavior only marks the event as processed — event handlers return `None`, so there is no result to cache.
+
+> **📌 ADR-062:** [EventBus Application Layer Peer](../../../adr/ADR-062-eventbus-application-layer-peer.md) documents the EventBus extraction and event idempotency design.
 
 ## Custom Behaviors
 
-Any class implementing `PipelineBehavior` works:
+Any class implementing `PipelineBehavior` works. For example, you could add distributed tracing by implementing a behavior that creates OpenTelemetry spans:
+
+```python
+class TracingBehavior:
+    """Minimal example — see the extension docs for the full implementation."""
+
+    async def handle(self, ctx: MessageContext, next: NextHandler) -> Any:
+        try:
+            import opentelemetry.trace as otel_trace
+        except ImportError:
+            return await next()
+
+        with otel_trace.get_tracer("myapp").start_as_current_span(
+            f"{ctx.kind.name} {type(ctx.message).__name__}"
+        ) as span:
+            span.set_attribute("message.type", type(ctx.message).__name__)
+            return await next()
+```
+
+This is a common extension that also involves wrapping the `MessageBroker` and `MessageSubscriber`. See the [Distributed Tracing extension example](../infrastructure/tracing.md) for the complete copyable implementation.
+
+Another example — a metrics collection behavior:
 
 ```python
 class MetricsBehavior:
@@ -156,9 +179,27 @@ class MetricsBehavior:
         return result
 ```
 
+## Pipeline Slot Order
+
+The recommended behavior ordering:
+
+| Slot | Behavior | Scope | Purpose |
+|------|----------|-------|---------|
+| 0 | `LoggingBehavior` | Command / Query / Event | Log every dispatch |
+| 1 | `ValidationBehavior` | Command / Query | Fail fast on invalid input |
+| 2 | `IdempotencyBehavior` | Command | Skip already-processed commands |
+| 3 | `AggregateLockingBehavior` | Command | Prevent concurrent aggregate access |
+| 4 | `EventIdempotencyBehavior` | Event | Skip duplicate events from broker redelivery |
+| — | Terminal handler | — | Your business logic |
+
+If you add a custom tracing behavior (see the [Distributed Tracing extension example](../infrastructure/tracing.md)), place it outermost — slot 0 — so it captures every downstream concern including logging and validation.
+
+> **📌 ADR-062:** [EventBus Application Layer Peer](../../../adr/ADR-062-eventbus-application-layer-peer.md) documents the EventBus extraction and event idempotency design.
+
 ## Next Steps
 
 - **[Add a Pipeline Behavior →](../../how-to/cqrs/add-pipeline-behavior.md)** — step-by-step guide
+- **[Implement Distributed Tracing →](../../how-to/infrastructure/configure-tracing.md)** — add tracing to your project as an extension
 - **[Add Idempotency →](../../how-to/cqrs/add-idempotency.md)** — idempotency configuration
 - **[Add Distributed Locking →](../../how-to/cqrs/add-distributed-locking.md)** — locking setup
 - **[Idempotency & Locking →](idempotency-and-locking.md)** — protocol details

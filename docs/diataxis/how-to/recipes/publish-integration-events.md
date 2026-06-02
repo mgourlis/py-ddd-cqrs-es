@@ -29,7 +29,7 @@ class OrderShippedIntegrationEvent(IntegrationEvent):
 
 All fields are primitives — guaranteed to serialize to JSON without custom encoders.
 
-## Step 2: Publish from a domain event handler
+## Step 2: Publish from a domain event handler (with tracing)
 
 ```python
 from pydomain.infrastructure.message_broker import MessageBroker
@@ -47,10 +47,12 @@ class PublishOrderShippedHandler:
             carrier=event.carrier,
             tracking_number=event.tracking_number,
         )
-        await self._broker.publish("orders.shipped", integration_event)
+        # Stamp tracing IDs so downstream services can continue the trace chain
+        stamped = integration_event.stamp_from(event)
+        await self._broker.publish("orders.shipped", stamped)
 ```
 
-The handler translates the domain event's rich types (`UUID`, `datetime`) into strings for the broker.
+The handler translates the domain event's rich types (`UUID`, `datetime`) into strings for the broker, and stamps the integration event with tracing IDs so the workflow can be traced end-to-end across services.
 
 ## Step 3: Verify outbound publishing with InMemoryMessageBroker
 
@@ -163,5 +165,6 @@ A bidirectional integration event pipeline. Outbound: domain event handlers tran
 
 ## Cross-references
 
-- **ADR-042**: IntegrationEvent primitive-only constraint
+- **ADR-022**: IntegrationEvent primitive-only constraint
+- **ADR-061**: Integration Event Distributed Tracing — `correlation_id` / `causation_id`
 - **ADR-044**: Anti-Corruption Layer via translation functions

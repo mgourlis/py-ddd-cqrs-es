@@ -106,10 +106,33 @@ class ThrottlingBehavior:
 
 | Behavior | Slot | Purpose | Required Dependencies |
 |----------|------|---------|---------------------|
-| `LoggingBehavior` | 1 | Log dispatch, duration, errors | None |
-| `ValidationBehavior` | 2 | Run validators before handler | `dict[type, list[Callable]]` |
-| `IdempotencyBehavior` | 3 | Skip duplicate commands | `ProcessedCommandStore` |
-| `AggregateLockingBehavior` | 4 | Lock aggregate per command | `LockProvider` + `LockKeyResolver` |
+| `LoggingBehavior` | 0 | Log dispatch, duration, errors | None |
+| `ValidationBehavior` | 1 | Run validators before handler | `dict[type, list[Callable]]` |
+| `IdempotencyBehavior` | 2 | Skip duplicate commands | `ProcessedMessageStore` |
+| `AggregateLockingBehavior` | 3 | Lock aggregate per command | `LockProvider` + `LockKeyResolver` |
+| `EventIdempotencyBehavior` | 4 | Skip duplicate events | `ProcessedMessageStore` |
+
+## Using Behaviors on Event Handlers
+
+Pipeline behaviors also work on event handlers registered with `MessageBus.register_event()` or `EventBus.register()`. The same `PipelineBehavior` protocol applies:
+
+```python
+from pydomain.cqrs.behaviors import EventIdempotencyBehavior
+from pydomain.testing import FakeProcessedMessageStore
+
+store = FakeProcessedMessageStore()
+
+bus.register_event(
+    event_type=OrderPlaced,
+    handler=SendConfirmationHandler(),
+    behaviors=[
+        LoggingBehavior(),
+        EventIdempotencyBehavior(store),  # Skip duplicates on redelivery
+    ],
+)
+```
+
+Event-specific behaviors like `EventIdempotencyBehavior` check the event's `causation_id` for dedup, which is set deterministically by the `InboundEventGateway` for externally-sourced events.
 
 ## Composing Behaviors Across Buses
 
