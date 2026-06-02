@@ -417,3 +417,111 @@ class TestInboundEventGateway:
         )
 
         assert dispatched == ["v2"]
+
+    @pytest.mark.anyio
+    async def test_tracing_ids_propagated_to_domain_event(
+        self,
+        gateway: InboundEventGateway,
+        subscriber: FakeMessageSubscriber,
+        bus: MessageBus,
+    ) -> None:
+        """When integration event carries correlation_id, the translated
+        DomainEvent is stamped with it. causation_id is set to the
+        integration event's own event_id (the direct cause)."""
+        dispatched: list[_OrderShippedDomain] = []
+
+        async def event_handler(event: _OrderShippedDomain) -> None:
+            dispatched.append(event)
+
+        bus.register_event(_OrderShippedDomain, event_handler)
+        gateway.register_translation(
+            "orders.shipped",
+            _OrderShippedIntegration,
+            _translate_order_shipped,
+        )
+
+        cid = "0195e000-0000-7000-8000-000000000aaa"
+        ieid = "0195e000-0000-7000-8000-000000000ccc"
+
+        await subscriber.simulate_message(
+            "orders.shipped",
+            {
+                "event_id": ieid,
+                "order_id": "550e8400-e29b-41d4-a716-446655440000",
+                "tracking_number": "TRACK123",
+                "correlation_id": cid,
+            },
+        )
+
+        assert len(dispatched) == 1
+        assert dispatched[0].correlation_id == UUID(cid)
+        # causation_id = integration event's own event_id, not its causation_id
+        assert dispatched[0].causation_id == UUID(ieid)
+
+    @pytest.mark.anyio
+    async def test_no_tracing_ids_payload_still_dispatched(
+        self,
+        gateway: InboundEventGateway,
+        subscriber: FakeMessageSubscriber,
+        bus: MessageBus,
+    ) -> None:
+        """Integration events without tracing IDs dispatch with None tracing.
+        This is backward-compatible — producers that don't stamp are fine."""
+        dispatched: list[_OrderShippedDomain] = []
+
+        async def event_handler(event: _OrderShippedDomain) -> None:
+            dispatched.append(event)
+
+        bus.register_event(_OrderShippedDomain, event_handler)
+        gateway.register_translation(
+            "orders.shipped",
+            _OrderShippedIntegration,
+            _translate_order_shipped,
+        )
+
+        await subscriber.simulate_message(
+            "orders.shipped",
+            {
+                "order_id": "550e8400-e29b-41d4-a716-446655440000",
+                "tracking_number": "TRACK123",
+            },
+        )
+
+        assert len(dispatched) == 1
+        assert dispatched[0].correlation_id is None
+        assert dispatched[0].causation_id is None
+
+    @pytest.mark.anyio
+    async def test_malformed_tracing_ids_survive(
+        self,
+        gateway: InboundEventGateway,
+        subscriber: FakeMessageSubscriber,
+        bus: MessageBus,
+    ) -> None:
+        """Non-UUID tracing IDs don't crash the gateway — it dispatches
+        without tracing and logs a warning."""
+        dispatched: list[_OrderShippedDomain] = []
+
+        async def event_handler(event: _OrderShippedDomain) -> None:
+            dispatched.append(event)
+
+        bus.register_event(_OrderShippedDomain, event_handler)
+        gateway.register_translation(
+            "orders.shipped",
+            _OrderShippedIntegration,
+            _translate_order_shipped,
+        )
+
+        await subscriber.simulate_message(
+            "orders.shipped",
+            {
+                "order_id": "550e8400-e29b-41d4-a716-446655440000",
+                "tracking_number": "TRACK123",
+                "correlation_id": "not-a-uuid",
+                "causation_id": "also-not-a-uuid",
+            },
+        )
+
+        assert len(dispatched) == 1
+        assert dispatched[0].correlation_id is None
+        assert dispatched[0].causation_id is None
