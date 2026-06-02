@@ -260,7 +260,7 @@
     },
     {
       "title": "Developer Tooling and Contribution",
-      "purpose": "Overview of the development environment, CI/CD workflows, commit conventions, and the VoltAgent-driven development workflow. Links to child pages for tooling and workflow.",
+      "purpose": "Overview of the development environment, CI/CD workflows and commit conventions. Links to child pages for tooling and workflow.",
       "page_notes": [
         {
           "content": ""
