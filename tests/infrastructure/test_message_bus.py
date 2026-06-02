@@ -18,6 +18,7 @@ from pydomain.cqrs import (
     CommandExecutionError,
     CommandResult,
     EmptyCommandResult,
+    EventBus,
     NoHandlerRegisteredError,
     Query,
     QueryBus,
@@ -86,15 +87,18 @@ class TestRegistration:
         bus = MessageBus()
         assert isinstance(bus._command_bus, CommandBus)
         assert isinstance(bus._query_bus, QueryBus)
+        assert isinstance(bus._event_bus, EventBus)
 
     @pytest.mark.anyio
     async def test_custom_buses_are_respected(self) -> None:
         """Pre-configured CommandBus and QueryBus are used when provided."""
         cmd_bus = CommandBus()
         qry_bus = QueryBus()
-        bus = MessageBus(command_bus=cmd_bus, query_bus=qry_bus)
+        evt_bus = EventBus()
+        bus = MessageBus(command_bus=cmd_bus, query_bus=qry_bus, event_bus=evt_bus)
         assert bus._command_bus is cmd_bus
         assert bus._query_bus is qry_bus
+        assert bus._event_bus is evt_bus
 
     @pytest.mark.anyio
     async def test_register_command_delegates(
@@ -517,7 +521,7 @@ class TestEventOrchestration:
         bus.register_event(_Evt, failing_handler)
         bus.register_event(_Evt, success_handler)
 
-        caplog.set_level(logging.ERROR, logger="pydomain.message_bus")
+        caplog.set_level(logging.ERROR, logger="pydomain.event_bus")
 
         uow = await _store_event(_Evt(data="test"))
         bus.register_command(_Cmd, cmd_handler, uow_factory=lambda: uow)
@@ -941,7 +945,7 @@ class TestDomainEventDispatch:
         bus.register_event(_Evt, failing_handler)
         bus.register_event(_Evt, success_handler)
 
-        caplog.set_level(logging.ERROR, logger="pydomain.message_bus")
+        caplog.set_level(logging.ERROR, logger="pydomain.event_bus")
         result = await bus.dispatch(_Evt(data="test"))
 
         assert result is None

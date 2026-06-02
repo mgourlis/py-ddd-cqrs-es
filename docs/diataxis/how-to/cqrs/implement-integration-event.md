@@ -28,7 +28,7 @@ class OrderShippedIntegrationEvent(IntegrationEvent):
 
 All fields must be primitives (str, int, float, bool, dict, list, None). The base class validates this at construction time.
 
-### 2. Create the event handler
+### 2. Create the event handler with tracing
 
 ```python
 class PublishOrderShippedHandler:
@@ -43,9 +43,10 @@ class PublishOrderShippedHandler:
             carrier=event.carrier,
             tracking_number=event.tracking_number,
         )
-        await self._broker.publish(
-            "order.shipped", integration_event
-        )
+        # Stamp the integration event with tracing IDs from the
+        # domain event — this preserves the trace chain across services
+        stamped = integration_event.stamp_from(event)
+        await self._broker.publish("order.shipped", stamped)
 ```
 
 ### 3. Register the handler
@@ -73,7 +74,8 @@ Domain Event (internal)          Integration Event (external)
 
 ## Auto-Generated Fields
 
-`event_id` and `occurred_at` are auto-generated. Don't set them manually:
+`event_id` and `occurred_at` are auto-generated. Don't set them manually.
+`correlation_id` and `causation_id` default to `None` — set them via `stamp()` before publishing:
 
 ```python
 event = OrderShippedIntegrationEvent(
@@ -84,8 +86,12 @@ event = OrderShippedIntegrationEvent(
     tracking_number="1Z999AA",
 )
 
-print(event.event_id)     # "018f4e2a-..." — auto-generated UUIDv7 string
-print(event.occurred_at)  # "2026-05-22T10:30:00+00:00" — auto-generated ISO 8601
+print(event.event_id)        # "018f4e2a-..." — auto-generated UUIDv7 string
+print(event.occurred_at)     # "2026-05-22T10:30:00+00:00" — auto-generated ISO 8601
+print(event.correlation_id)  # None — not yet stamped
+
+stamped = event.stamp_from(domain_event)
+print(stamped.correlation_id)  # "0195e000-..." — now carries tracing
 ```
 
 ## Primitive-Only Enforcement
@@ -106,7 +112,7 @@ Convert UUIDs to strings with `str()`, datetimes with `.isoformat()`.
 
 ## Publishing Multiple Integration Events
 
-One domain event can trigger multiple integration events:
+One domain event can trigger multiple integration events — stamp each from the same domain event:
 
 ```python
 class PublishOrderEventsHandler:
@@ -116,11 +122,11 @@ class PublishOrderEventsHandler:
     async def __call__(self, event: OrderPlaced) -> None:
         await self._broker.publish(
             "order.placed",
-            OrderPlacedIntegrationEvent(...),
+            OrderPlacedIntegrationEvent(...).stamp_from(event),
         )
         await self._broker.publish(
             "inventory.reserved",
-            InventoryReservedIntegrationEvent(...),
+            InventoryReservedIntegrationEvent(...).stamp_from(event),
         )
 ```
 

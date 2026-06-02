@@ -106,12 +106,14 @@ registry update and subscription wiring. The actual async handler is an inner cl
 ### Neutral
 
 - Re-registration is intentional — enabling schema evolution without restart. The overwrite semantics are documented and tested.
+- When an integration event carries `correlation_id`, the gateway automatically stamps the translated domain event. `causation_id` is set to the integration event's own `event_id` (the direct cause), providing consumer-side idempotency for broker redelivery. See ADR-061.
 
 ## References
 
-- `src/pydomain/infrastructure/message_subscriber.py` — `InboundEventGateway` class (lines 121–250)
-- `tests/infrastructure/test_inbound_event_gateway.py` — 10 test methods covering happy path, validation, translation, dispatch, lifecycle, multi-topic, extra fields, re-registration
+- `src/pydomain/infrastructure/message_subscriber.py` — `InboundEventGateway` class
+- `tests/infrastructure/test_inbound_event_gateway.py` — test suite including tracing propagation
 - ADR-058: MessageBus Dispatch Extended for DomainEvent
 - ADR-059: `MessageSubscriber` Protocol
 - ADR-051: `MessageBroker` Protocol
 - ADR-022: Integration Events — Primitive-Only Payloads
+- ADR-061: Integration Event Distributed Tracing — `correlation_id` / `causation_id`

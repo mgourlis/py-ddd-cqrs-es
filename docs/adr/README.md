@@ -138,6 +138,18 @@ ADRs capture **why** a design choice was made, not just **what** was decided.
 |-----|-------|--------|------|
 | [ADR-060](ADR-060-inbound-event-gateway.md) | InboundEventGateway — bridging external brokers to the internal MessageBus | Accepted | 2026-05-22 |
 
+## Infrastructure — Integration Event Distributed Tracing (ADR-061)
+
+| ADR | Title | Status | Date |
+|-----|-------|--------|------|
+| [ADR-061](ADR-061-integration-event-tracing.md) | Integration Event Distributed Tracing — `correlation_id` / `causation_id` | Accepted | 2026-05-30 |
+
+## CQRS — EventBus Application Layer Peer (ADR-062)
+
+| ADR | Title | Status | Date |
+|-----|-------|--------|------|
+| [ADR-062](ADR-062-eventbus-application-layer-peer.md) | EventBus as First-Class Citizen in the Application Layer | Accepted | 2026-06-02 |
+
 ## Superseded
 
 _None._

@@ -2,7 +2,7 @@ from pydomain.cqrs.projection import ProjectionStore
 from pydomain.testing.fake_checkpoint_store import FakeCheckpointStore
 from pydomain.testing.fake_event_store import FakeEventStore
 from pydomain.testing.fake_lock_provider import FakeLockProvider
-from pydomain.testing.fake_processed_command_store import FakeProcessedCommandStore
+from pydomain.testing.fake_processed_message_store import FakeProcessedMessageStore
 from pydomain.testing.fake_repository import FakeRepository
 from pydomain.testing.fake_saga_repository import FakeSagaRepository
 from pydomain.testing.fake_snapshot_store import FakeSnapshotStore
@@ -16,7 +16,7 @@ __all__ = [
     "FakeSagaRepository",
     "FakeEventStore",
     "FakeLockProvider",
-    "FakeProcessedCommandStore",
+    "FakeProcessedMessageStore",
     "FakeRepository",
     "FakeSnapshotStore",
     "FakeUnitOfWork",
