@@ -420,6 +420,138 @@ class TestInheritance:
         assert event.event_id == eid
 
 
+class TestTracing:
+    """Tests for correlation_id / causation_id stamping on IntegrationEvent."""
+
+    def test_tracing_fields_default_to_none(self) -> None:
+        event = IntegrationEvent()
+        assert event.correlation_id is None
+        assert event.causation_id is None
+
+    def test_stamp_sets_both_ids(self) -> None:
+        event = IntegrationEvent()
+        stamped = event.stamp(
+            correlation_id="0195e000-0000-7000-8000-000000000aaa",
+            causation_id="0195e000-0000-7000-8000-000000000bbb",
+        )
+        assert stamped.correlation_id == "0195e000-0000-7000-8000-000000000aaa"
+        assert stamped.causation_id == "0195e000-0000-7000-8000-000000000bbb"
+
+    def test_stamp_returns_new_instance(self) -> None:
+        event = IntegrationEvent()
+        stamped = event.stamp(
+            correlation_id="0195e000-0000-7000-8000-000000000aaa",
+            causation_id="0195e000-0000-7000-8000-000000000bbb",
+        )
+        assert stamped is not event
+
+    def test_stamp_preserves_original_event(self) -> None:
+        event = IntegrationEvent()
+        event.stamp(
+            correlation_id="0195e000-0000-7000-8000-000000000aaa",
+            causation_id="0195e000-0000-7000-8000-000000000bbb",
+        )
+        # Original unchanged
+        assert event.correlation_id is None
+        assert event.causation_id is None
+
+    def test_stamp_preserves_event_id_and_occurred_at(self) -> None:
+        eid = "0194a2b0-1234-7abc-def0-123456789abc"
+        ts = "2024-01-15T10:30:00.123456+00:00"
+        event = IntegrationEvent(event_id=eid, occurred_at=ts)
+        stamped = event.stamp(
+            correlation_id="0195e000-0000-7000-8000-000000000aaa",
+            causation_id="0195e000-0000-7000-8000-000000000bbb",
+        )
+        assert stamped.event_id == eid
+        assert stamped.occurred_at == ts
+
+    def test_stamp_preserves_business_fields(self) -> None:
+        class OrderPlaced(IntegrationEvent):
+            order_id: str
+
+        event = OrderPlaced(order_id="ORD-001")
+        stamped = event.stamp(
+            correlation_id="0195e000-0000-7000-8000-000000000aaa",
+            causation_id="0195e000-0000-7000-8000-000000000bbb",
+        )
+        assert stamped.order_id == "ORD-001"
+
+    def test_stamped_event_serialization_round_trip(self) -> None:
+        cid = "0195e000-0000-7000-8000-000000000aaa"
+        caid = "0195e000-0000-7000-8000-000000000bbb"
+
+        event = IntegrationEvent()
+        stamped = event.stamp(correlation_id=cid, causation_id=caid)
+        data = stamped.model_dump()
+        restored = IntegrationEvent.model_validate(data)
+        assert restored == stamped
+        assert restored.correlation_id == cid
+        assert restored.causation_id == caid
+
+    def test_stamped_subclass_serialization_json_round_trip(self) -> None:
+        cid = "0195e000-0000-7000-8000-000000000aaa"
+        caid = "0195e000-0000-7000-8000-000000000bbb"
+
+        class OrderPlaced(IntegrationEvent):
+            order_id: str
+
+        event = OrderPlaced(order_id="ORD-001")
+        stamped = event.stamp(correlation_id=cid, causation_id=caid)
+        json_str = stamped.model_dump_json()
+        restored = OrderPlaced.model_validate_json(json_str)
+        assert restored == stamped
+        assert restored.correlation_id == cid
+        assert restored.causation_id == caid
+
+    def test_explicit_tracing_ids_accepted(self) -> None:
+        cid = "0195e000-0000-7000-8000-000000000aaa"
+        caid = "0195e000-0000-7000-8000-000000000bbb"
+
+        event = IntegrationEvent(
+            correlation_id=cid,
+            causation_id=caid,
+        )
+        assert event.correlation_id == cid
+        assert event.causation_id == caid
+
+    def test_tracing_ids_are_primitives_pass_validation(self) -> None:
+        """str | None is in the allowed primitives tuple — must not raise."""
+        event = IntegrationEvent(
+            correlation_id="0195e000-0000-7000-8000-000000000aaa",
+            causation_id="0195e000-0000-7000-8000-000000000bbb",
+        )
+        # If validation failed, construction would have raised
+        assert event.correlation_id is not None
+
+    def test_stamp_from_extracts_tracing_from_domain_event(self) -> None:
+        from pydomain.ddd.domain_event import DomainEvent
+
+        class OrderPlaced(IntegrationEvent):
+            order_id: str
+
+        domain_event = DomainEvent(
+            correlation_id=UUID("0195e000-0000-7000-8000-000000000aaa"),
+        )
+        integration = OrderPlaced(order_id="ORD-001")
+        stamped = integration.stamp_from(domain_event)
+
+        # correlation_id copied from the domain event
+        assert stamped.correlation_id == str(domain_event.correlation_id)
+        # causation_id = domain_event.event_id (the direct cause)
+        assert stamped.causation_id == str(domain_event.event_id)
+        assert stamped.order_id == "ORD-001"
+
+    def test_stamp_from_raises_on_none_correlation_id(self) -> None:
+        from pydomain.ddd.domain_event import DomainEvent
+
+        domain_event = DomainEvent()  # correlation_id is None
+        integration = IntegrationEvent()
+
+        with pytest.raises(ValueError, match="None correlation_id"):
+            integration.stamp_from(domain_event)
+
+
 class TestExports:
     def test_integration_event_importable_from_cqrs(self) -> None:
         from pydomain.cqrs import IntegrationEvent
